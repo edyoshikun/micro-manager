@@ -54,6 +54,7 @@ enum
 	ERR_SERIAL_NUMBER_REQUIRED = 20001,
 	ERR_SERIAL_NUMBER_NOT_FOUND,
 	ERR_CANNOT_CONNECT,
+	PYLON_ERR = 10002
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -150,9 +151,24 @@ public:
 	int OnShutterMode(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnTemperature(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnTemperatureState(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnTriggerSource(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnWidth(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+	// 
+	int OnTriggerSource(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnTriggerSelector(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnTriggerActivation(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnTriggerOverlap(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnTriggerDelay(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnExposureMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnUserOutputSelector(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnUserOutputValue(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+	//int OnLineSelector(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnLineMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnLineInverter(MM::PropertyBase* pProp, MM::ActionType eAct);
+	//int OnLineSource(MM::PropertyBase* pProp, MM::ActionType eAct);
+
 
 private:
 
@@ -193,7 +209,32 @@ private:
 	//MM::MMTime startTime_;
 
 	void ResizeSnapBuffer();
+
+	//Create properties based on camera properties from FLIR since both are GenIcam Standards
+	template<typename enumType>
+	void CreatePropertyFromEnum(const std::string& name, Pylon::IEnumParameterT<enumType>& camProp,int (BaslerCamera::* fpt)(MM::PropertyBase* pProp, MM::ActionType eAct));
+	void CreatePropertyFromFloat(const std::string& name,GenApi::IFloat& camProp,int (BaslerCamera::* fpt)(MM::PropertyBase* pProp, MM::ActionType eAct));
 	
+	template<typename enumType>
+	int OnEnumPropertyChanged(Pylon::IEnumParameterT<enumType>& camProp,MM::PropertyBase* pProp,MM::ActionType eAct);
+	int OnFloatPropertyChanged(GenApi::IFloat& camProp,MM::PropertyBase* pProp,MM::ActionType eAct);
+	std::string EAccessName(GenApi::EAccessMode accessMode) {
+		switch (accessMode) {
+		case GenApi::EAccessMode::NA:
+			return "Not available";
+		case GenApi::EAccessMode::NI:
+			return "Not Implemented";
+		case GenApi::EAccessMode::RO:
+			return "Read Only";
+		case GenApi::EAccessMode::RW:
+			return "Read Write";
+		case GenApi::EAccessMode::WO:
+			return "Write Only";
+		default:
+			return "Unknown";
+		}
+	}
+
 };
 
 //Enumeration used for distinguishing different events.
@@ -228,3 +269,98 @@ public:
 	virtual void OnImageGrabbed( CInstantCamera& camera, const CGrabResultPtr& ptrGrabResult);
 };
 
+
+// Implementing template based on other GENICAM implamentations
+template<typename enumType>
+inline void BaslerCamera::CreatePropertyFromEnum(const std::string& name, Pylon::IEnumParameterT<enumType>& camProp, int(BaslerCamera::* fpt)(MM::PropertyBase* pProp, MM::ActionType eAct))
+{
+	auto accessMode = camProp.GetAccessMode();
+
+	if (accessMode == GenApi::EAccessMode::RO || accessMode == GenApi::EAccessMode::RW || accessMode == GenApi::EAccessMode::NA)
+	{
+		try
+		{
+			bool readOnly = accessMode == GenApi::EAccessMode::RO || accessMode == GenApi::EAccessMode::NA;
+			auto pAct = new CPropertyAction(this, fpt);
+
+			if (accessMode != GenApi::EAccessMode::NA)
+			{
+				GenApi::StringList_t propertyValues;
+				camProp.GetSymbolics(propertyValues);
+
+				CreateProperty(name.c_str(), camProp.GetCurrentEntry()->GetSymbolic().c_str(), MM::String, readOnly, pAct);
+
+				for (unsigned int i = 0; i < propertyValues.size(); i++)
+					AddAllowedValue(name.c_str(), propertyValues[i].c_str());
+			}
+			else
+			{
+				CreateProperty(name.c_str(), "", MM::String, readOnly, pAct);
+				AddAllowedValue(name.c_str(), "");
+			}
+		}
+		catch (const GenericException& e)
+		{
+			// Error handling.
+			AddToLog(e.GetDescription());
+			cerr << "An exception occurred." << endl
+				<< e.GetDescription() << endl;
+		}
+	}
+	else
+	{
+		LogMessage(name + " property not created: Property not accessable\nAccess Mode: " + EAccessName(accessMode));
+	}
+}
+template<typename enumType>
+inline int BaslerCamera::OnEnumPropertyChanged(Pylon::IEnumParameterT<enumType>& camProp, MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (camProp.GetAccessMode() == GenApi::EAccessMode::NA)
+		return DEVICE_OK;
+
+	if (eAct == MM::BeforeGet)
+	{
+		try
+		{
+			auto mmProp = dynamic_cast<MM::Property*>(pProp);
+			if (mmProp != nullptr) {
+				mmProp->SetReadOnly(camProp.GetAccessMode() != GenApi::EAccessMode::RW);
+
+				mmProp->ClearAllowedValues();
+				GenApi::StringList_t propertyValues;
+				camProp.GetSymbolics(propertyValues);
+				for (unsigned int i = 0; i < propertyValues.size(); i++)
+					mmProp->AddAllowedValue(propertyValues[i].c_str());
+			}
+
+			pProp->Set(camProp.GetCurrentEntry()->GetSymbolic());
+		}
+		catch (const GenericException & ex)
+		{
+			//// Error handling.
+			//AddToLog(e.GetDescription());
+			//cerr << "An exception occurred." << endl
+			//	<< e.GetDescription() << endl;
+			//return DEVICE_ERR;
+			pProp->Set("");
+		}
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		try
+		{
+			std::string val;
+			pProp->Get(val);
+			camProp.FromString(GenICam::gcstring(val.c_str()));
+		}
+		catch (const GenericException & e)
+		{
+			// Error handling.
+			AddToLog(e.GetDescription());
+			cerr << "An exception occurred." << endl
+				<< e.GetDescription() << endl;
+			return DEVICE_ERR;
+		}
+	}
+	return DEVICE_OK;
+}

@@ -672,9 +672,38 @@ int BaslerCamera::Initialize()
 			SetAllowedValues("LightSourcePreset", LSPVals);
 		}
 
+		//Triggering Functions Test
+
+		//Turning trigger ON to enable other functions to be switched
+		TriggerModeEnums originalTriggerState;
+		try {
+			originalTriggerState = camera_->TriggerMode.GetValue();
+			camera_->TriggerMode.SetValue(TriggerMode_On);
+		}
+		catch (const GenericException& e) {
+			// Error handling.
+			AddToLog(e.GetDescription());
+			cerr << "An exception occurred." << endl	<< e.GetDescription() << endl;
+			return DEVICE_ERR;
+		}
 
 		/////Trigger Mode//////
-		CEnumerationPtr TriggerMode(nodeMap_->GetNode("TriggerMode"));
+		CreatePropertyFromEnum("Trigger Mode", camera_->TriggerMode, &BaslerCamera::OnTriggerMode);
+		CreatePropertyFromEnum("Trigger Selector", camera_->TriggerSelector, &BaslerCamera::OnTriggerSelector);
+		CreatePropertyFromEnum("Trigger Source", camera_->TriggerSource, &BaslerCamera::OnTriggerSource);
+		CreatePropertyFromFloat("Trigger Delay", camera_->TriggerDelay, &BaslerCamera::OnTriggerDelay);
+
+		try {
+			camera_->TriggerMode.SetValue(originalTriggerState);
+		}
+		catch (const GenericException& e) {
+			// Error handling.
+			AddToLog(e.GetDescription());
+			cerr << "An exception occurred." << endl << e.GetDescription() << endl;
+			return DEVICE_ERR;
+		}
+
+		/*CEnumerationPtr TriggerMode(nodeMap_->GetNode("TriggerMode"));
 		if (IsAvailable(TriggerMode))
 		{
 			pAct = new CPropertyAction(this, &BaslerCamera::OnTriggerMode);
@@ -683,31 +712,35 @@ int BaslerCamera::Initialize()
 			LSPVals.push_back("Off");
 			LSPVals.push_back("On");
 			SetAllowedValues("TriggerMode", LSPVals);
-		}
+		}*/
+
 		/////Trigger Source//////
-		CEnumerationPtr triggersource(nodeMap_->GetNode("TriggerSource"));
-		if (IsWritable(triggersource))
-		{
-			if (triggersource != NULL && IsAvailable(triggersource))
-			{
-				pAct = new CPropertyAction(this, &BaslerCamera::OnTriggerSource);
-				ret = CreateProperty("TriggerSource", "NA", MM::String, false, pAct);
-				vector<string> LSPVals;
-				NodeList_t entries;
-				triggersource->GetEntries(entries);
-				for (NodeList_t::iterator it = entries.begin(); it != entries.end(); ++it)
-				{
-					CEnumEntryPtr pEnumEntry(*it);
-					string strValue = pEnumEntry->GetSymbolic().c_str();
-					//Software Execute button not implement yet.
-					if (IsAvailable(*it) && strValue.find("Software") == std::string::npos)
-					{
-						LSPVals.push_back(strValue);
-					}
-				}
-				SetAllowedValues("TriggerSource", LSPVals);
-			}
-		}
+		//CEnumerationPtr triggersource(nodeMap_->GetNode("TriggerSource"));
+		//if (IsWritable(triggersource))
+		//{
+		//	if (triggersource != NULL && IsAvailable(triggersource))
+		//	{
+		//		pAct = new CPropertyAction(this, &BaslerCamera::OnTriggerSource);
+		//		ret = CreateProperty("TriggerSource", "NA", MM::String, false, pAct);
+		//		vector<string> LSPVals;
+		//		NodeList_t entries;
+		//		triggersource->GetEntries(entries);
+		//		for (NodeList_t::iterator it = entries.begin(); it != entries.end(); ++it)
+		//		{
+		//			CEnumEntryPtr pEnumEntry(*it);
+		//			string strValue = pEnumEntry->GetSymbolic().c_str();
+		//			//Software Execute button not implement yet.
+		//			if (IsAvailable(*it) && strValue.find("Software") == std::string::npos)
+		//			{
+		//				LSPVals.push_back(strValue);
+		//			}
+		//		}
+		//		SetAllowedValues("TriggerSource", LSPVals);
+		//	}
+		//}
+
+
+
 		////Shutter mode//////	
 		CEnumerationPtr shutterMode(nodeMap_->GetNode("ShutterMode"));
 		if (IsAvailable(shutterMode))
@@ -1275,26 +1308,25 @@ void BaslerCamera::ResizeSnapBuffer() {
 // Action handlers
 ///////////////////////////////////////////////////////////////////////////////
 
+//Triggering
 int BaslerCamera::OnTriggerSource(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	string TriggerSource_;
-	if (eAct == MM::AfterSet) {
-		pProp->Get(TriggerSource_);
-		CEnumerationPtr TriggerSource(nodeMap_->GetNode("TriggerSource"));
-		TriggerSource->FromString(TriggerSource_.c_str());
-	}
-	else if (eAct == MM::BeforeGet) {
-		CEnumerationPtr TriggerSource(nodeMap_->GetNode("TriggerSource"));
-		gcstring val = TriggerSource->ToString();
-		//camemu has only Software trigger.
-		if (val.find("Software") == string::npos)
-		{
-			const char* s = val.c_str();
-			pProp->Set(s);
-		}
-	}
-	return DEVICE_OK;
+	return OnEnumPropertyChanged(camera_->TriggerSource, pProp, eAct);
 }
+int BaslerCamera::OnTriggerSelector(MM::PropertyBase* pProp, MM::ActionType eAct) {
+	return OnEnumPropertyChanged(camera_->TriggerSelector, pProp, eAct);
+}
+int BaslerCamera::OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	return OnEnumPropertyChanged(camera_->TriggerMode, pProp, eAct);
+}
+int BaslerCamera::OnTriggerActivation(MM::PropertyBase* pProp, MM::ActionType eAct) {
+	return OnEnumPropertyChanged(camera_->TriggerActivation, pProp, eAct);
+}
+int BaslerCamera::OnTriggerDelay(MM::PropertyBase* pProp, MM::ActionType eAct) {
+	return OnFloatPropertyChanged(camera_->TriggerDelay, pProp, eAct);
+}
+
 
 int BaslerCamera::OnBinningMode(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
@@ -1659,34 +1691,6 @@ int BaslerCamera::OnSensorReadoutMode(MM::PropertyBase* pProp, MM::ActionType eA
 	return DEVICE_OK;
 }
 
-int BaslerCamera::OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-	try
-	{
-		string TriggerMode_;
-		CEnumerationPtr TriggerMode(nodeMap_->GetNode("TriggerMode"));
-		if (TriggerMode != NULL && IsAvailable(TriggerMode))
-		{
-			if (eAct == MM::AfterSet) {
-				pProp->Get(TriggerMode_);
-				TriggerMode->FromString(TriggerMode_.c_str());
-				pProp->Set(TriggerMode->ToString().c_str());
-			}
-			else if (eAct == MM::BeforeGet) {
-				pProp->Set(TriggerMode->ToString().c_str());
-			}
-		}
-	}
-	catch (const GenericException & e)
-	{
-		// Error handling.
-		AddToLog(e.GetDescription());
-		cout << "An exception occurred." << endl << e.GetDescription() << endl;
-		cerr << "An exception occurred." << endl
-			<< e.GetDescription() << endl;
-	}
-	return DEVICE_OK;
-}
 
 int BaslerCamera::OnTemperature(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
@@ -2133,9 +2137,9 @@ void CTempCameraEventHandler::OnCameraEvent(CBaslerUniversalInstantCamera& camer
 	}
 }
 
-CircularBufferInserter::CircularBufferInserter(BaslerCamera* dev) :
-	dev_(dev)
-{}
+CircularBufferInserter::CircularBufferInserter(BaslerCamera* dev):dev_(dev){
+
+}
 
 void CircularBufferInserter::OnImageGrabbed(CInstantCamera& /* camera */, const CGrabResultPtr& ptrGrabResult)
 {
@@ -2149,6 +2153,7 @@ void CircularBufferInserter::OnImageGrabbed(CInstantCamera& /* camera */, const 
 	md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString((long)ptrGrabResult->GetHeight()));
 	md.put(MM::g_Keyword_Metadata_ImageNumber, CDeviceUtils::ConvertToString((long)ptrGrabResult->GetImageNumber()));
 	md.put(MM::g_Keyword_Meatdata_Exposure, dev_->GetExposure());
+	
 	// Image grabbed successfully?
 	if (ptrGrabResult->GrabSucceeded())
 	{
@@ -2208,4 +2213,69 @@ void CircularBufferInserter::OnImageGrabbed(CInstantCamera& /* camera */, const 
 		ss << "Error: " << ptrGrabResult->GetErrorCode() << " " << ptrGrabResult->GetErrorDescription() << endl;
 		dev_->AddToLog(ss.str());
 	}
+}
+
+
+
+//Functions from Spinnaker
+
+void BaslerCamera::CreatePropertyFromFloat(const std::string& name, GenApi::IFloat& camProp, int(BaslerCamera::* fpt)(MM::PropertyBase* pProp, MM::ActionType eAct))
+{
+	auto accessMode = camProp.GetAccessMode();
+	if (accessMode == GenApi::EAccessMode::RO || accessMode == GenApi::EAccessMode::RW || accessMode == GenApi::EAccessMode::NA)
+	{
+		try
+		{
+			auto pAct = new CPropertyAction(this, fpt);
+			bool readOnly = accessMode == GenApi::EAccessMode::RO || accessMode == GenApi::EAccessMode::NA;
+			if (accessMode != GenApi::EAccessMode::NA)
+				CreateProperty(name.c_str(), camProp.ToString().c_str(), MM::Float, readOnly, pAct);
+			else
+				CreateProperty(name.c_str(), "0", MM::Float, readOnly, pAct);
+		}
+		catch (const GenericException&e)
+		{
+			LogMessage(e.what());
+		}
+	}
+	else
+	{
+		LogMessage(name + " property not created: Property not accessable\nAccess Mode: " + EAccessName(accessMode));
+	}
+}
+int BaslerCamera::OnFloatPropertyChanged(GenApi::IFloat& camProp, MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (camProp.GetAccessMode() == GenApi::EAccessMode::NA)
+		return DEVICE_OK;
+
+	if (eAct == MM::BeforeGet)
+	{
+		try
+		{
+			auto mmProp = dynamic_cast<MM::Property*>(pProp);
+			if (mmProp != nullptr) mmProp->SetReadOnly(camProp.GetAccessMode() != GenApi::EAccessMode::RW);
+			pProp->Set(camProp.GetValue());
+		}
+		catch (const GenericException& e)
+		{
+			SetErrorText(PYLON_ERR, ("Could not read " + pProp->GetName() + "! " + std::string(e.what())).c_str());
+			return PYLON_ERR;
+		}
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		try
+		{
+			double val;
+			pProp->Get(val);
+
+			camProp.SetValue(val);
+		}
+		catch (const GenericException& e)
+		{
+			SetErrorText(PYLON_ERR, ("Could not write " + pProp->GetName() + "! " + std::string(e.what())).c_str());
+			return PYLON_ERR;
+		}
+	}
+	return DEVICE_OK;
 }
