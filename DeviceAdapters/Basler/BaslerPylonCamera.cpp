@@ -67,6 +67,8 @@ using namespace GenICam;
 #include <sstream>
 #include <math.h>
 #include "ModuleInterface.h"
+#include "../../MMDevice/ModuleInterface.h"
+
 #include "DeviceUtils.h"
 #include <vector>
 
@@ -703,44 +705,6 @@ int BaslerCamera::Initialize()
 			return DEVICE_ERR;
 		}
 
-		/*CEnumerationPtr TriggerMode(nodeMap_->GetNode("TriggerMode"));
-		if (IsAvailable(TriggerMode))
-		{
-			pAct = new CPropertyAction(this, &BaslerCamera::OnTriggerMode);
-			ret = CreateProperty("TriggerMode", "Off", MM::String, false, pAct);
-			vector<string> LSPVals;
-			LSPVals.push_back("Off");
-			LSPVals.push_back("On");
-			SetAllowedValues("TriggerMode", LSPVals);
-		}*/
-
-		/////Trigger Source//////
-		//CEnumerationPtr triggersource(nodeMap_->GetNode("TriggerSource"));
-		//if (IsWritable(triggersource))
-		//{
-		//	if (triggersource != NULL && IsAvailable(triggersource))
-		//	{
-		//		pAct = new CPropertyAction(this, &BaslerCamera::OnTriggerSource);
-		//		ret = CreateProperty("TriggerSource", "NA", MM::String, false, pAct);
-		//		vector<string> LSPVals;
-		//		NodeList_t entries;
-		//		triggersource->GetEntries(entries);
-		//		for (NodeList_t::iterator it = entries.begin(); it != entries.end(); ++it)
-		//		{
-		//			CEnumEntryPtr pEnumEntry(*it);
-		//			string strValue = pEnumEntry->GetSymbolic().c_str();
-		//			//Software Execute button not implement yet.
-		//			if (IsAvailable(*it) && strValue.find("Software") == std::string::npos)
-		//			{
-		//				LSPVals.push_back(strValue);
-		//			}
-		//		}
-		//		SetAllowedValues("TriggerSource", LSPVals);
-		//	}
-		//}
-
-
-
 		////Shutter mode//////	
 		CEnumerationPtr shutterMode(nodeMap_->GetNode("ShutterMode"));
 		if (IsAvailable(shutterMode))
@@ -964,25 +928,38 @@ int BaslerCamera::SetProperty(const char* name, const char* value)
 */
 int BaslerCamera::Shutdown()
 {
-	if (!camera_)
-	{
-		camera_->Close();
-		delete camera_;
+	try {
+		if (!camera_)
+		{
+			camera_->Close();
+			delete camera_;
+		}
+		initialized_ = false;
+		PylonTerminate();
 	}
-	initialized_ = false;
-	PylonTerminate();
+	catch (const GenericException & e) {
+		AddToLog(e.GetDescription());
+		cerr << "An exception occurred." << endl << e.GetDescription() << endl;
+		return DEVICE_ERR;
+	}
 	return DEVICE_OK;
 }
 
 int BaslerCamera::SnapImage()
 {
+	CGrabResultPtr ptrGrabResult;
+	int timeout_ms = 5000;
 	try
 	{
 		camera_->StartGrabbing(1, GrabStrategy_OneByOne, GrabLoop_ProvidedByUser);
 		// This smart pointer will receive the grab result data.
+		
+		// Software trigger
+		if (camera_->TriggerMode.GetValue() == TriggerMode_On && camera_->TriggerSource() == TriggerMode_Off)
+		{
+			camera_-> TriggerSoftware.Execute();
+		}
 		//When all smart pointers referencing a Grab Result Data object go out of scope, the grab result's image buffer is reused for grabbing
-		CGrabResultPtr ptrGrabResult;
-		int timeout_ms = 5000;
 		if (!camera_->RetrieveResult(timeout_ms, ptrGrabResult, TimeoutHandling_ThrowException)) {
 			return DEVICE_ERR;
 		}
@@ -1012,6 +989,7 @@ void BaslerCamera::CopyToImageBuffer(CGrabResultPtr ptrGrabResult)
 	bool IsByerFormat = false;
 	string currentPixelFormat = Pylon::CPixelTypeMapper::GetNameByPixelType(ptrGrabResult->GetPixelType());
 	std::size_t found = currentPixelFormat.find(subject);
+	
 	if (found != std::string::npos)
 	{
 		IsByerFormat = true;
@@ -1123,7 +1101,7 @@ unsigned BaslerCamera::GetBitDepth() const
 */
 long BaslerCamera::GetImageBufferSize() const
 {
-	return GetImageWidth() * GetImageHeight() * GetImageBytesPerPixel();
+	return (long) GetImageWidth() * GetImageHeight() * GetImageBytesPerPixel();
 }
 
 /**
@@ -1294,7 +1272,6 @@ int BaslerCamera::PrepareSequenceAcqusition()
 }
 
 void BaslerCamera::ResizeSnapBuffer() {
-
 	free(imgBuffer_);
 	long bytes = GetImageBufferSize();
 	imgBuffer_ = malloc(bytes);
@@ -2141,14 +2118,21 @@ CircularBufferInserter::CircularBufferInserter(BaslerCamera* dev):dev_(dev){
 
 }
 
+/*
+* Insert Image and Metadata into MMCore circular Buffer
+*/
 void CircularBufferInserter::OnImageGrabbed(CInstantCamera& /* camera */, const CGrabResultPtr& ptrGrabResult)
 {
 
 	// char label[MM::MaxStrLength];
-
+	//MM::MMTime timeStamp = camera->GetCurrentMMTime();
 	// Important:  meta data about the image are generated here:
 	Metadata md;
+
 	md.put("Camera", "");
+	//md.put(MM::g_Keyword_Metadata_StartTime, CDeviceUtils::ConvertToString(m_aqThread->GetStartTime().getMsec()));
+	//md.put(MM::g_Keyword_Elapsed_Time_ms, CDeviceUtils::ConvertToString((timeStamp - m_aqThread->GetStartTime()).getMsec()));
+
 	md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString((long)ptrGrabResult->GetWidth()));
 	md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString((long)ptrGrabResult->GetHeight()));
 	md.put(MM::g_Keyword_Metadata_ImageNumber, CDeviceUtils::ConvertToString((long)ptrGrabResult->GetImageNumber()));

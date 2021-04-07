@@ -30,8 +30,6 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
 // DAMAGE.
-
-
 #pragma once
 
 #include "DeviceBase.h"
@@ -43,6 +41,10 @@
 #include "ImgBuffer.h"
 #include <iostream>
 #include <pylon/PylonIncludes.h>
+
+#include "../../MMDevice/DeviceBase.h"
+#include "../../MMDevice/ImgBuffer.h"
+#include "../../MMDevice/DeviceThreads.h"
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -335,13 +337,13 @@ inline int BaslerCamera::OnEnumPropertyChanged(Pylon::IEnumParameterT<enumType>&
 
 			pProp->Set(camProp.GetCurrentEntry()->GetSymbolic());
 		}
-		catch (const GenericException & ex)
+		catch (const GenericException & e)
 		{
 			//// Error handling.
-			//AddToLog(e.GetDescription());
-			//cerr << "An exception occurred." << endl
-			//	<< e.GetDescription() << endl;
-			//return DEVICE_ERR;
+			AddToLog(e.GetDescription());
+			cerr << "An exception occurred." << endl
+				<< e.GetDescription() << endl;
+			return DEVICE_ERR;
 			pProp->Set("");
 		}
 	}
