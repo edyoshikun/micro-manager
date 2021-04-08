@@ -79,7 +79,6 @@ import org.micromanager.internal.utils.GUIUtils;
 import org.micromanager.internal.utils.ReportingUtils;
 import org.micromanager.internal.utils.TextUtils;
 
-
 import org.micromanager.projector.Mapping;
 import org.micromanager.projector.ProjectorActions;
 

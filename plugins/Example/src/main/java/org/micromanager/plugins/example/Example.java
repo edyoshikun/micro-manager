@@ -43,6 +43,7 @@ public class Example implements SciJavaPlugin, MenuPlugin {
    private Studio studio_;
    private ExampleFrame frame_;
 
+   
    /**
     * This method receives the Studio object, which is the gateway to the
     * Micro-Manager API. You should retain a reference to this object for the
