@@ -33,6 +33,7 @@ import org.micromanager.CompatibilityInterface;
 import org.micromanager.LogManager;
 import org.micromanager.PluginManager;
 import org.micromanager.PositionListManager;
+import org.micromanager.PropertyManager;
 import org.micromanager.ScriptController;
 import org.micromanager.ShutterManager;
 import org.micromanager.Studio;
@@ -99,6 +100,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 
@@ -134,6 +136,7 @@ public final class MMStudio implements Studio {
    private UiMovesStageManager uiMovesStageManager_;
    private DefaultApplication defaultApplication_;
    private DefaultCompatibilityInterface compatibility_;
+   private PropertyManager propertyManager_;
    
    // Local Classes
    private final MMSettings settings_ = new MMSettings();
@@ -294,6 +297,8 @@ public final class MMStudio implements Studio {
 
       posListManager_ = new DefaultPositionListManager(this);
       acqEngine_.setPositionList(posListManager_.getPositionList());
+
+      propertyManager_ = new DefaultPropertyManager();
 
       initializeLogging(core_); // Tell Core to start logging
  
@@ -559,7 +564,13 @@ public final class MMStudio implements Studio {
             }
 
 
-            zmqServer_ = new ZMQServer(classLoaders, instanceGrabberFunction, new String[]{"org.micromanager.internal"});
+            zmqServer_ = new ZMQServer(classLoaders, instanceGrabberFunction,
+                    new String[]{"org.micromanager.internal"}, new Consumer<String>() {
+               @Override
+               public void accept(String s) {
+                  studio_.getCMMCore().logMessage(s);
+               }
+            });
             logs().logMessage("Initialized ZMQ Server on port: " + ZMQServer.DEFAULT_MASTER_PORT_NUMBER);
          } catch (URISyntaxException | UnsupportedEncodingException e) {
             studio_.logs().logError("Failed to initialize ZMQ Server");
@@ -1081,6 +1092,18 @@ public final class MMStudio implements Studio {
    public AlertManager getAlertManager() {
       return alerts();
    }
+
+   @Override
+   public PropertyManager getPropertyManager() {
+      return propertyManager_;
+   }
+
+   @Override
+   public PropertyManager properties() {
+      return propertyManager_;
+   }
+
+
 
    public UiMovesStageManager getUiMovesStageManager () {
       return uiMovesStageManager_;
